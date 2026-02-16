@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -17,7 +17,7 @@ const loginSchema = z.object({
   password: z.string().min(1, "Contraseña requerida"),
 });
 
-export default function ComensalLoginPage() {
+function ComensalLoginContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const redirect = searchParams.get("redirect") || "/";
@@ -133,5 +133,26 @@ export default function ComensalLoginPage() {
         </p>
       </div>
     </div>
+  );
+}
+
+function LoginFallback() {
+  return (
+    <div className="flex min-h-[70vh] items-center justify-center px-4">
+      <div className="w-full max-w-md animate-pulse rounded-2xl border bg-card p-6 shadow-sm">
+        <div className="h-10 rounded-lg bg-muted" />
+        <div className="mt-4 h-11 rounded-lg bg-muted" />
+        <div className="mt-4 h-11 rounded-lg bg-muted" />
+        <div className="mt-6 h-11 rounded-lg bg-muted" />
+      </div>
+    </div>
+  );
+}
+
+export default function ComensalLoginPage() {
+  return (
+    <Suspense fallback={<LoginFallback />}>
+      <ComensalLoginContent />
+    </Suspense>
   );
 }
