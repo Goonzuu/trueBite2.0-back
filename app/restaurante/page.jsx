@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useMemo, useEffect } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useAppStore } from "@/lib/store";
 import { TagPill } from "@/components/truebite/tag-pill";
@@ -19,7 +20,7 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
-import { isRestauranteLoggedIn, logoutRestaurante } from "@/lib/auth";
+import { isRestauranteLoggedIn, logoutRestaurante, getRestauranteRestaurantId } from "@/lib/auth";
 
 const statusConfig = {
   PENDING_CONFIRMATION: {
@@ -51,7 +52,13 @@ const statusConfig = {
 
 export default function RestauranteDashboardPage() {
   const router = useRouter();
-  const { reservations, restaurants, cancelReservation, confirmReservation, markReservationCompleted, markReservationNoShow, updateRestaurantBenefit } = useAppStore();
+  const [mounted, setMounted] = useState(false);
+  const restaurantId = getRestauranteRestaurantId();
+  const { reservations, restaurants, cancelReservation, confirmReservation, markReservationCompleted, markReservationNoShow, updateRestaurantBenefit, setRestaurantReservationConfig, setRestaurantReservationsPaused } = useAppStore();
+  const wizardCompleted = useAppStore(
+    (s) => s.getRestaurantReservationConfig(restaurantId)?.wizardCompleted
+  );
+  const config = useAppStore((s) => s.getRestaurantReservationConfig(restaurantId));
   const [selectedStatus, setSelectedStatus] = useState("Todas");
   const [selectedRestaurant, setSelectedRestaurant] = useState("Todos");
   const [sortBy, setSortBy] = useState("date");
@@ -60,24 +67,54 @@ export default function RestauranteDashboardPage() {
   const [configBenefit, setConfigBenefit] = useState("");
 
   useEffect(() => {
+    setMounted(true);
+  }, []);
+
+  useEffect(() => {
+    if (!mounted) return;
     if (!isRestauranteLoggedIn()) {
       router.push("/restaurante/login");
+      return;
     }
-  }, [router]);
+    if (!restaurantId) {
+      router.push("/restaurante/login");
+      return;
+    }
+    if (!wizardCompleted) {
+      router.push("/restaurante/config-wizard");
+      return;
+    }
+  }, [mounted, router, restaurantId, wizardCompleted]);
+
+  useEffect(() => {
+    if (mounted && restaurantId) {
+      setSelectedRestaurant(restaurantId);
+      setConfigRestaurantId(restaurantId);
+    }
+  }, [mounted, restaurantId]);
+
+  useEffect(() => {
+    if (restaurantId && configRestaurantId === restaurantId) {
+      const r = restaurants.find((x) => x.id === restaurantId);
+      if (r?.benefit) setConfigBenefit((prev) => prev || r.benefit);
+    }
+  }, [restaurantId, configRestaurantId, restaurants]);
 
   const statusOptions = ["Todas", ...Object.keys(statusConfig)];
-
   const restaurantOptions = useMemo(() => {
-    const unique = [...new Set(reservations.map((r) => r.restaurantId))];
-    return ["Todos", ...unique];
-  }, [reservations]);
+    const mine = restaurantId ? reservations.filter((r) => r.restaurantId === restaurantId) : reservations;
+    const unique = [...new Set(mine.map((r) => r.restaurantId))];
+    return restaurantId ? unique : ["Todos", ...unique];
+  }, [reservations, restaurantId]);
 
   const filteredReservations = useMemo(() => {
-    let filtered = [...reservations];
+    let filtered = restaurantId
+      ? reservations.filter((r) => r.restaurantId === restaurantId)
+      : [...reservations];
     if (selectedStatus !== "Todas") {
       filtered = filtered.filter((r) => r.status === selectedStatus);
     }
-    if (selectedRestaurant !== "Todos") {
+    if (selectedRestaurant && selectedRestaurant !== "Todos") {
       filtered = filtered.filter((r) => r.restaurantId === selectedRestaurant);
     }
     filtered.sort((a, b) => {
@@ -87,7 +124,26 @@ export default function RestauranteDashboardPage() {
       return b.id.localeCompare(a.id);
     });
     return filtered;
-  }, [reservations, selectedStatus, selectedRestaurant, sortBy]);
+  }, [reservations, selectedStatus, selectedRestaurant, sortBy, restaurantId]);
+
+  const myReservations = useMemo(() => {
+    return restaurantId ? reservations.filter((r) => r.restaurantId === restaurantId) : reservations;
+  }, [reservations, restaurantId]);
+
+  const stats = useMemo(() => ({
+    total: myReservations.length,
+    pending: myReservations.filter((r) => r.status === "PENDING_CONFIRMATION").length,
+    confirmed: myReservations.filter((r) => r.status === "CONFIRMED").length,
+    completed: myReservations.filter((r) => r.status === "COMPLETED").length,
+  }), [myReservations]);
+
+  if (!mounted) {
+    return (
+      <div className="flex min-h-[40vh] items-center justify-center px-4">
+        <div className="h-8 w-8 animate-spin rounded-full border-2 border-primary border-t-transparent" />
+      </div>
+    );
+  }
 
   function handleConfirm(reservationId) {
     confirmReservation(reservationId);
@@ -125,13 +181,6 @@ export default function RestauranteDashboardPage() {
     router.push("/restaurante/login");
   }
 
-  const stats = useMemo(() => ({
-    total: reservations.length,
-    pending: reservations.filter((r) => r.status === "PENDING_CONFIRMATION").length,
-    confirmed: reservations.filter((r) => r.status === "CONFIRMED").length,
-    completed: reservations.filter((r) => r.status === "COMPLETED").length,
-  }), [reservations]);
-
   return (
     <div className="flex flex-col gap-6 px-4 py-4 pb-8">
       <div className="flex items-center justify-between">
@@ -144,9 +193,15 @@ export default function RestauranteDashboardPage() {
           </p>
         </div>
         <div className="flex items-center gap-2">
-          <PrimaryButton size="sm" onClick={() => router.push("/restaurante/reviews")}>
-            Ver Reviews
+          <PrimaryButton size="sm" onClick={() => router.push("/restaurante/disponibilidad")}>
+            Disponibilidad
           </PrimaryButton>
+          <button
+            onClick={() => router.push("/restaurante/reviews")}
+            className="rounded-xl border px-4 py-2 text-sm font-medium transition-colors hover:bg-muted/50"
+          >
+            Reviews
+          </button>
           <button
             onClick={handleLogout}
             className="flex items-center gap-2 rounded-xl border px-4 py-2 text-sm font-medium text-destructive transition-colors hover:bg-destructive/5"
@@ -154,6 +209,84 @@ export default function RestauranteDashboardPage() {
             <LogOut className="h-4 w-4" />
             Salir
           </button>
+        </div>
+      </div>
+
+      <div className="rounded-2xl border bg-card p-4">
+        <h3 className="text-sm font-semibold text-foreground mb-3">
+          Configuración de reservas
+        </h3>
+        <p className="text-xs text-muted-foreground mb-3">
+          Controla cómo recibes reservas y si se confirman automáticamente o requieren tu aprobación.
+        </p>
+        <div className="flex flex-col gap-4">
+          <div className="flex items-center justify-between rounded-xl border bg-background/50 px-4 py-3">
+            <div>
+              <p className="text-sm font-medium text-foreground">Aceptar reservas</p>
+              <p className="text-xs text-muted-foreground">
+                {config?.reservationsPaused ? "Pausadas" : "Activas"}
+              </p>
+            </div>
+            <button
+              type="button"
+              role="switch"
+              aria-checked={!config?.reservationsPaused}
+              onClick={() => setRestaurantReservationsPaused(restaurantId, !config?.reservationsPaused)}
+              className={cn(
+                "relative h-8 w-14 rounded-full transition-colors shrink-0",
+                config?.reservationsPaused ? "bg-muted" : "bg-primary"
+              )}
+            >
+              <span
+                className={cn(
+                  "absolute top-1 h-6 w-6 rounded-full bg-white shadow transition-transform",
+                  config?.reservationsPaused ? "left-1" : "left-7"
+                )}
+              />
+            </button>
+          </div>
+          <div>
+            <p className="text-sm font-medium text-foreground mb-2">Modo de confirmación</p>
+            <div className="flex flex-col gap-2 sm:flex-row sm:gap-4">
+              <label className="flex cursor-pointer items-center gap-2">
+                <input
+                  type="radio"
+                  name="confirmationMode"
+                  checked={(config?.confirmationMode || "auto") !== "manual"}
+                  onChange={() => {
+                    const c = useAppStore.getState().getRestaurantReservationConfig(restaurantId);
+                    setRestaurantReservationConfig(restaurantId, { ...c, confirmationMode: "auto" });
+                  }}
+                  className="rounded-full"
+                />
+                <span className="text-sm">Automática</span>
+              </label>
+              <label className="flex cursor-pointer items-center gap-2">
+                <input
+                  type="radio"
+                  name="confirmationMode"
+                  checked={(config?.confirmationMode || "auto") === "manual"}
+                  onChange={() => {
+                    const c = useAppStore.getState().getRestaurantReservationConfig(restaurantId);
+                    setRestaurantReservationConfig(restaurantId, { ...c, confirmationMode: "manual" });
+                  }}
+                  className="rounded-full"
+                />
+                <span className="text-sm">Manual (requiere confirmar)</span>
+              </label>
+            </div>
+            <p className="mt-1 text-xs text-muted-foreground">
+              {(config?.confirmationMode || "auto") === "auto"
+                ? "Las reservas se confirman al instante."
+                : "Las reservas quedan pendientes hasta que las confirmes."}
+            </p>
+          </div>
+          <Link
+            href="/restaurante/disponibilidad"
+            className="text-xs font-medium text-primary hover:underline"
+          >
+            Ver horarios, áreas y reglas en Disponibilidad →
+          </Link>
         </div>
       </div>
 

@@ -49,7 +49,7 @@ export function BottomTabs() {
               role="tab"
               aria-selected={active}
               className={cn(
-                "flex flex-col items-center gap-0.5 px-3 py-1 text-xs transition-colors",
+                "flex flex-col items-center justify-center gap-0.5 px-3 py-3 min-h-[56px] text-xs transition-colors touch-target-y",
                 active
                   ? "text-primary"
                   : "text-muted-foreground hover:text-foreground"

@@ -85,6 +85,16 @@
   }
 }
 
+@layer base {
+  /* Mobile-first: tap highlight suave, evita zoom en inputs iOS */
+  html {
+    -webkit-tap-highlight-color: hsl(var(--primary) / 0.2);
+  }
+  input, select, textarea, button {
+    font-size: 16px; /* Evita zoom automático en iOS */
+  }
+}
+
 @layer utilities {
   .text-balance {
     text-wrap: balance;
@@ -95,5 +105,21 @@
   .no-scrollbar {
     -ms-overflow-style: none;
     scrollbar-width: none;
+  }
+  /* Mobile-first: áreas táctiles mínimas 44px */
+  .touch-target {
+    min-height: 44px;
+    min-width: 44px;
+  }
+  .touch-target-y {
+    min-height: 44px;
+  }
+  /* Safe area para dispositivos con notch/home indicator */
+  .pb-safe {
+    padding-bottom: env(safe-area-inset-bottom, 0);
+  }
+  .h-safe-area-inset-bottom {
+    height: env(safe-area-inset-bottom, 0px);
+    min-height: env(safe-area-inset-bottom, 0px);
   }
 }

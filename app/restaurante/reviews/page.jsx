@@ -15,31 +15,43 @@ import {
   BarChart3,
 } from "lucide-react";
 import { PrimaryButton } from "@/components/truebite/primary-button";
-import { isRestauranteLoggedIn, logoutRestaurante } from "@/lib/auth";
+import { isRestauranteLoggedIn, logoutRestaurante, getRestauranteRestaurantId } from "@/lib/auth";
 
 export default function RestauranteReviewsPage() {
   const router = useRouter();
-  const { reviews, restaurants } = useAppStore();
+  const { reviews, restaurants, getRestaurantById } = useAppStore();
+  const restaurantId = getRestauranteRestaurantId();
+  const currentRestaurant = restaurantId ? getRestaurantById(restaurantId) : null;
+
+  // Solo las reviews de ESTE restaurante
+  const myReviews = useMemo(() => {
+    if (!restaurantId) return [];
+    return reviews.filter((r) => r.restaurantId === restaurantId);
+  }, [reviews, restaurantId]);
 
   useEffect(() => {
     if (!isRestauranteLoggedIn()) {
       router.push("/restaurante/login");
+      return;
     }
-  }, [router]);
+    if (!restaurantId) {
+      router.push("/restaurante/login");
+    }
+  }, [router, restaurantId]);
 
   const kpis = useMemo(() => {
-    const total = reviews.length;
+    const total = myReviews.length;
     const avgRating =
       total > 0
-        ? Math.round((reviews.reduce((sum, r) => sum + r.rating, 0) / total) * 10) / 10
+        ? Math.round((myReviews.reduce((sum, r) => sum + r.rating, 0) / total) * 10) / 10
         : 0;
     const avgFood =
       total > 0
         ? Math.round(
-            (reviews.reduce((sum, r) => sum + (r.categories?.food || 0), 0) / total) * 10
+            (myReviews.reduce((sum, r) => sum + (r.categories?.food || 0), 0) / total) * 10
           ) / 10
         : 0;
-    const verifiedCount = reviews.filter((r) => r.verified).length;
+    const verifiedCount = myReviews.filter((r) => r.verified).length;
     return {
       total,
       avgRating,
@@ -47,16 +59,16 @@ export default function RestauranteReviewsPage() {
       verifiedCount,
       verifiedPercentage: total > 0 ? Math.round((verifiedCount / total) * 100) : 0,
     };
-  }, [reviews]);
+  }, [myReviews]);
 
   const ratingDistribution = useMemo(() => {
     const dist = { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0 };
-    reviews.forEach((r) => {
+    myReviews.forEach((r) => {
       const rating = Math.floor(r.rating);
       if (rating >= 1 && rating <= 5) dist[rating]++;
     });
     return dist;
-  }, [reviews]);
+  }, [myReviews]);
 
   const maxCount = Math.max(...Object.values(ratingDistribution));
 
@@ -66,6 +78,8 @@ export default function RestauranteReviewsPage() {
     router.push("/restaurante/login");
   }
 
+  if (!restaurantId) return null;
+
   return (
     <div className="flex flex-col gap-6 px-4 py-4 pb-8">
       <div className="flex items-center justify-between">
@@ -74,7 +88,9 @@ export default function RestauranteReviewsPage() {
             Reviews Verificadas
           </h1>
           <p className="mt-1 text-sm text-muted-foreground">
-            Todas las opiniones son de comensales con reserva completada
+            {currentRestaurant
+              ? `Opiniones de comensales sobre ${currentRestaurant.name}`
+              : "Todas las opiniones son de comensales con reserva completada"}
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -156,32 +172,27 @@ export default function RestauranteReviewsPage() {
 
       <div className="flex flex-col gap-3">
         <h3 className="text-sm font-semibold text-foreground">
-          Todas las Reviews ({reviews.length})
+          Todas las Reviews ({myReviews.length})
         </h3>
-        {reviews.length === 0 ? (
+        {myReviews.length === 0 ? (
           <div className="flex flex-col items-center gap-3 py-16 text-center">
             <MessageSquare className="h-12 w-12 text-muted-foreground" />
             <p className="text-base font-semibold text-foreground">No hay reviews</p>
             <p className="text-sm text-muted-foreground">
-              Aún no se han publicado reviews verificadas
+              Aún no se han publicado reviews verificadas para tu restaurante
             </p>
           </div>
         ) : (
-          reviews.map((review) => {
-            const restaurant = restaurants.find((r) => r.id === review.restaurantId);
-            return (
+          myReviews.map((review) => (
               <div key={review.id} className="flex flex-col gap-3 rounded-2xl border bg-card p-4">
                 <div className="flex items-start justify-between">
                   <div className="flex-1">
                     <div className="flex items-center gap-2 mb-1">
-                      <p className="font-semibold text-card-foreground">
-                        {restaurant?.name || "Restaurante"}
-                      </p>
                       {review.verified && <VerifiedBadge size="sm" />}
+                      <p className="text-xs text-muted-foreground">
+                        Por {review.userName} · {review.date}
+                      </p>
                     </div>
-                    <p className="text-xs text-muted-foreground">
-                      Por {review.userName} · {review.date}
-                    </p>
                   </div>
                   <RatingStars rating={review.rating} size="sm" />
                 </div>
@@ -206,8 +217,7 @@ export default function RestauranteReviewsPage() {
                   </div>
                 )}
               </div>
-            );
-          })
+            ))
         )}
       </div>
     </div>

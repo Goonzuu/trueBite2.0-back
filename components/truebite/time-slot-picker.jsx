@@ -28,7 +28,7 @@ export function TimeSlotPicker({ slots = [], selected, onSelect, className }) {
               type="button"
               onClick={() => onSelect?.(slot)}
               className={cn(
-                "rounded-xl border px-4 py-2 text-sm font-medium transition-all",
+                "rounded-xl border px-4 py-2 min-h-[44px] text-sm font-medium transition-all",
                 selected === slot
                   ? "border-primary bg-primary text-primary-foreground shadow-sm"
                   : "border-border bg-card text-card-foreground hover:border-primary/40 hover:bg-primary/5"

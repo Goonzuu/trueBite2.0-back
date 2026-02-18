@@ -11,24 +11,41 @@ import { PrimaryButton } from "@/components/truebite/primary-button";
 import { UtensilsCrossed, Lock, Mail } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { loginRestaurante, isRestauranteLoggedIn } from "@/lib/auth";
+import { useAppStore } from "@/lib/store";
 
 const loginSchema = z.object({
   email: z.string().email("Email inválido"),
   password: z.string().min(1, "Contraseña requerida"),
+  restaurantId: z.string().min(1, "Selecciona tu restaurante"),
 });
 
 export default function RestauranteLoginPage() {
   const router = useRouter();
+  const { restaurants } = useAppStore();
   const [isLoading, setIsLoading] = useState(false);
 
   const {
     register,
     handleSubmit,
     formState: { errors },
+    setValue,
+    watch,
   } = useForm({
     resolver: zodResolver(loginSchema),
-    defaultValues: { email: "restaurante@truebite.com", password: "demo" },
+    defaultValues: {
+      email: "restaurante@truebite.com",
+      password: "demo",
+      restaurantId: restaurants[0]?.id || "",
+    },
   });
+
+  const selectedRestaurantId = watch("restaurantId");
+
+  useEffect(() => {
+    if (restaurants.length > 0 && !selectedRestaurantId) {
+      setValue("restaurantId", restaurants[0].id);
+    }
+  }, [restaurants, selectedRestaurantId, setValue]);
 
   useEffect(() => {
     if (isRestauranteLoggedIn()) {
@@ -39,13 +56,7 @@ export default function RestauranteLoginPage() {
   function onSubmit(data) {
     setIsLoading(true);
     setTimeout(() => {
-      loginRestaurante(data.email);
-      // Mantener compatibilidad con admin
-      localStorage.setItem("truebite_admin", JSON.stringify({
-        email: data.email,
-        loggedIn: true,
-        timestamp: Date.now(),
-      }));
+      loginRestaurante(data.email, data.restaurantId);
       toast.success("Bienvenido al panel", {
         description: "Gestiona tus reservas, reviews y beneficios.",
       });
@@ -90,6 +101,30 @@ export default function RestauranteLoginPage() {
             />
             {errors.email && (
               <p className="text-xs text-destructive">{errors.email.message}</p>
+            )}
+          </div>
+
+          <div className="flex flex-col gap-2">
+            <label className="flex items-center gap-2 text-sm font-medium text-foreground">
+              <UtensilsCrossed className="h-4 w-4 text-primary" />
+              ¿Qué restaurante gestionas?
+            </label>
+            <select
+              {...register("restaurantId")}
+              className={cn(
+                "h-11 w-full rounded-xl border bg-background px-3 text-sm text-foreground focus:border-primary/50 focus:outline-none focus:ring-1 focus:ring-primary/30",
+                errors.restaurantId && "border-destructive"
+              )}
+            >
+              <option value="">Seleccionar restaurante</option>
+              {restaurants.map((r) => (
+                <option key={r.id} value={r.id}>
+                  {r.name} · {r.city}
+                </option>
+              ))}
+            </select>
+            {errors.restaurantId && (
+              <p className="text-xs text-destructive">{errors.restaurantId.message}</p>
             )}
           </div>
 

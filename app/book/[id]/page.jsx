@@ -1,6 +1,6 @@
 "use client";
 
-import { use, useState } from "react";
+import { use, useState, useMemo, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { ComensalGuard } from "@/components/auth/comensal-guard";
 import Link from "next/link";
@@ -9,7 +9,7 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { toast } from "sonner";
 import { useAppStore } from "@/lib/store";
-import { timeSlots } from "@/lib/mock-data";
+import { getMinAvailableTimeToday } from "@/lib/availability";
 import { TimeSlotPicker } from "@/components/truebite/time-slot-picker";
 import { PrimaryButton } from "@/components/truebite/primary-button";
 import { RatingStars } from "@/components/truebite/rating-stars";
@@ -27,7 +27,7 @@ import { cn } from "@/lib/utils";
 const bookingSchema = z.object({
   date: z.string().min(1, "Selecciona una fecha"),
   time: z.string().min(1, "Selecciona un horario"),
-  guests: z.coerce.number().min(1, "Minimo 1 persona").max(12, "Maximo 12 personas"),
+  guests: z.coerce.number().min(1, "Mínimo 1 persona").max(24, "Máximo 24 personas"),
   notes: z.string().optional(),
 });
 
@@ -49,9 +49,34 @@ export default function BookPage({ params }) {
     defaultValues: { date: "", time: "", guests: 2, notes: "" },
   });
 
+  const selectedDate = watch("date");
+  const selectedGuests = watch("guests");
   const selectedTime = watch("time");
   const activeBenefits = getActiveBenefitsForRestaurant(id);
-  const benefitToApply = activeBenefits[0]; // Usar el primer beneficio disponible
+  const benefitToApply = activeBenefits[0];
+  const config = useAppStore((s) => s.getRestaurantReservationConfig(id));
+  const getAvailableSlots = useAppStore((s) => s.getAvailableSlotsForRestaurant);
+  const maxGuests = config?.rules?.maxPeoplePerReservation ?? 12;
+
+  const availableSlots = useMemo(() => {
+    if (!selectedDate) return [];
+    return getAvailableSlots(id, selectedDate, selectedGuests || 2);
+  }, [id, selectedDate, selectedGuests, getAvailableSlots]);
+
+  useEffect(() => {
+    if (selectedTime && availableSlots.length > 0 && !availableSlots.includes(selectedTime)) {
+      setValue("time", "");
+    }
+  }, [availableSlots, selectedTime, setValue]);
+
+  const canReserve =
+    config?.reservationsEnabled &&
+    !config?.reservationsPaused &&
+    config?.wizardCompleted;
+  const isAutoConfirm =
+    canReserve && config?.confirmationMode !== "manual";
+  const isComingSoon = !config?.wizardCompleted || !config?.reservationsEnabled;
+  const isPaused = config?.reservationsPaused;
 
   if (!restaurant) {
     return (
@@ -75,12 +100,17 @@ export default function BookPage({ params }) {
       time: data.time,
       guests: data.guests,
       notes: data.notes || "",
+      autoConfirmed: isAutoConfirm,
       ...(benefitToApply && { appliedBenefitId: benefitToApply.id }),
     });
-    toast.success("Solicitud enviada", {
-      description: benefitToApply
-        ? `Tu reserva incluye el beneficio: ${benefitToApply.benefit}. Te avisaremos cuando la confirmen.`
-        : `Hemos enviado tu solicitud a ${restaurant.name}. Te avisaremos cuando la confirmen.`,
+    toast.success(isAutoConfirm ? "¡Reserva confirmada!" : "Solicitud enviada", {
+      description: isAutoConfirm
+        ? benefitToApply
+          ? `Tu reserva incluye: ${benefitToApply.benefit}`
+          : `Tu mesa está reservada para el ${new Date(data.date).toLocaleDateString("es-ES", { day: "numeric", month: "long" })} a las ${data.time}`
+        : benefitToApply
+          ? `Tu reserva incluye el beneficio: ${benefitToApply.benefit}. Te avisaremos cuando la confirmen.`
+          : `Hemos enviado tu solicitud a ${restaurant.name}. Te avisaremos cuando la confirmen.`,
       duration: 4000,
     });
     setSubmitted(true);
@@ -91,6 +121,7 @@ export default function BookPage({ params }) {
   }
 
   if (submitted) {
+    const wasAutoConfirm = isAutoConfirm;
     return (
       <ComensalGuard>
       <div className="flex flex-col items-center justify-center gap-4 px-4 py-20 text-center">
@@ -98,13 +129,12 @@ export default function BookPage({ params }) {
           <CheckCircle2 className="h-8 w-8 text-primary" />
         </div>
         <h2 className="text-xl font-bold text-foreground font-serif">
-          ¡Solicitud enviada!
+          {wasAutoConfirm ? "¡Reserva confirmada!" : "¡Solicitud enviada!"}
         </h2>
         <p className="text-sm text-muted-foreground">
-          Tu solicitud de reserva en <span className="font-medium text-foreground">{restaurant.name}</span> ha sido enviada al restaurante.
-        </p>
-        <p className="text-xs text-muted-foreground mt-2">
-          El restaurante revisará tu solicitud y te notificaremos cuando sea confirmada. Esto suele tomar unas horas.
+          {wasAutoConfirm
+            ? `Tu mesa en ${restaurant.name} está reservada. Nos vemos pronto.`
+            : `Tu reserva está pendiente. ${restaurant.name} la revisará y te avisará cuando la confirme.`}
         </p>
         <div className="flex flex-col gap-2 w-full max-w-xs mt-4">
           <PrimaryButton onClick={() => router.push("/reservations")}>
@@ -115,6 +145,44 @@ export default function BookPage({ params }) {
             onClick={() => router.push("/")}
           >
             Seguir explorando
+          </PrimaryButton>
+        </div>
+      </div>
+      </ComensalGuard>
+    );
+  }
+
+  if (!canReserve) {
+    return (
+      <ComensalGuard>
+      <div className="flex flex-col gap-6 px-4 py-4">
+        <div className="flex items-center gap-3">
+          <Link
+            href={`/restaurants/${id}`}
+            className="flex h-9 w-9 items-center justify-center rounded-full border bg-card"
+            aria-label="Volver"
+          >
+            <ArrowLeft className="h-4 w-4" />
+          </Link>
+          <div>
+            <h1 className="text-lg font-bold text-foreground">Reservar mesa</h1>
+            <p className="text-sm text-muted-foreground">{restaurant.name}</p>
+          </div>
+        </div>
+        <div className="flex flex-col items-center gap-4 py-16 text-center">
+          <div className="flex h-16 w-16 items-center justify-center rounded-full bg-muted">
+            <Clock className="h-8 w-8 text-muted-foreground" />
+          </div>
+          <h2 className="text-xl font-bold text-foreground font-serif">
+            {isPaused ? "Reservas temporalmente cerradas" : "Reservas próximamente"}
+          </h2>
+          <p className="max-w-sm text-sm text-muted-foreground">
+            {isPaused
+              ? `${restaurant.name} ha pausado las reservas. Vuelve a intentar más tarde.`
+              : `Este restaurante está configurando su sistema de reservas. Pronto podrás reservar directamente.`}
+          </p>
+          <PrimaryButton asChild>
+            <Link href={`/restaurants/${id}`}>Volver al restaurante</Link>
           </PrimaryButton>
         </div>
       </div>
@@ -222,11 +290,57 @@ export default function BookPage({ params }) {
         {/* Time */}
         <div className="flex flex-col gap-2">
           <label className="text-sm font-medium text-foreground">Horario</label>
-          <TimeSlotPicker
-            slots={timeSlots}
-            selected={selectedTime}
-            onSelect={(time) => setValue("time", time, { shouldValidate: true })}
-          />
+          {selectedDate ? (
+            availableSlots.length > 0 ? (
+              <div className="flex flex-col gap-2">
+                {(() => {
+                  const today = new Date().toISOString().split("T")[0];
+                  const minAdvance = config?.rules?.minAdvanceHours ?? 1;
+                  const isToday = selectedDate === today;
+                  const minTime = isToday ? getMinAvailableTimeToday(minAdvance) : null;
+                  return (
+                    <>
+                      {minTime && (
+                        <p className="text-xs text-muted-foreground">
+                          Disponible desde las {minTime} (antelación mínima: {minAdvance} {minAdvance === 1 ? "hora" : "horas"})
+                        </p>
+                      )}
+                      <TimeSlotPicker
+                        slots={availableSlots}
+                        selected={selectedTime}
+                        onSelect={(time) => setValue("time", time, { shouldValidate: true })}
+                      />
+                    </>
+                  );
+                })()}
+              </div>
+            ) : (
+              <div className="flex flex-col gap-3 rounded-xl border border-dashed bg-muted/30 px-4 py-6 text-center">
+                <p className="text-sm text-muted-foreground">
+                  No hay horarios disponibles para esta fecha.
+                </p>
+                <div className="flex flex-col gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setValue("date", "")}
+                    className="text-sm font-medium text-primary hover:underline"
+                  >
+                    Elegir otra fecha
+                  </button>
+                  <Link
+                    href="/"
+                    className="text-sm font-medium text-muted-foreground hover:text-foreground"
+                  >
+                    Ver otros restaurantes
+                  </Link>
+                </div>
+              </div>
+            )
+          ) : (
+            <p className="text-xs text-muted-foreground">
+              Selecciona primero una fecha
+            </p>
+          )}
           {errors.time && (
             <p className="text-xs text-destructive">{errors.time.message}</p>
           )}
@@ -239,7 +353,7 @@ export default function BookPage({ params }) {
             Comensales
           </label>
           <div className="flex items-center gap-3">
-            {[1, 2, 3, 4, 5, 6].map((num) => (
+            {[1, 2, 3, 4, 5, 6].filter((n) => n <= maxGuests).map((num) => (
               <button
                 key={num}
                 type="button"
@@ -259,7 +373,7 @@ export default function BookPage({ params }) {
               {...register("guests")}
               className="h-10 w-16 rounded-xl border bg-card px-2 text-center text-sm text-card-foreground focus:border-primary/50 focus:outline-none focus:ring-1 focus:ring-primary/30"
               min={1}
-              max={12}
+              max={maxGuests}
             />
           </div>
           {errors.guests && (
@@ -276,7 +390,7 @@ export default function BookPage({ params }) {
           <textarea
             {...register("notes")}
             rows={3}
-            placeholder="Alergias, ocasion especial, preferencias..."
+            placeholder="Ocasion especial, preferencias..."
             className="w-full rounded-xl border bg-card p-3 text-sm text-card-foreground placeholder:text-muted-foreground focus:border-primary/50 focus:outline-none focus:ring-1 focus:ring-primary/30 resize-none"
           />
         </div>

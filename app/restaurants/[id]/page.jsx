@@ -39,12 +39,21 @@ export default function RestaurantDetailPage({ params }) {
   const [activeTab, setActiveTab] = useState("info");
   const [reviewSort, setReviewSort] = useState("recent");
   const [loggedIn, setLoggedIn] = useState(false);
+  const config = useAppStore((s) => s.getRestaurantReservationConfig(id));
 
   useEffect(() => {
     setLoggedIn(isComensalLoggedIn());
   }, []);
 
   const restaurant = getRestaurantById(id);
+  const canReserve =
+    config?.reservationsEnabled && !config?.reservationsPaused && config?.wizardCompleted;
+  const isPaused = config?.reservationsPaused;
+  const ctaLabel = isPaused
+    ? "Reservas temporalmente cerradas"
+    : !canReserve
+      ? "Reservas próximamente"
+      : "Reservar mesa";
   const restaurantReviews = getReviewsForRestaurant(id);
   const isFav = restaurant
     ? user.favoriteRestaurants.includes(restaurant.id)
@@ -405,7 +414,7 @@ export default function RestaurantDetailPage({ params }) {
       <div className="fixed bottom-20 left-0 right-0 z-30 border-t bg-background/90 px-4 py-3 backdrop-blur-lg">
         <PrimaryButton asChild>
           <Link href={loggedIn ? `/book/${restaurant.id}` : `/login?redirect=${encodeURIComponent(`/book/${restaurant.id}`)}`}>
-            Reservar mesa
+            {ctaLabel}
             <ChevronRight className="ml-1 h-4 w-4" />
           </Link>
         </PrimaryButton>
