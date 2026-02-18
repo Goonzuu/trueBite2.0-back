@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { reviews } from "@/lib/mock-data";
+import { serverError, validationError } from "@/lib/api-response";
 
 const reviewSchema = z.object({
   reservationId: z.string().min(1, "reservationId es requerido"),
@@ -46,29 +47,28 @@ export async function GET(request) {
       count: filtered.length,
     });
   } catch (error) {
-    return NextResponse.json(
-      { success: false, error: error.message },
-      { status: 500 }
-    );
+    return serverError(error.message);
   }
 }
 
 export async function POST(request) {
   try {
     const body = await request.json();
+    const validated = reviewSchema.safeParse(body);
 
-    // Validar con Zod
-    const validated = reviewSchema.parse(body);
+    if (!validated.success) {
+      return validationError(validated.error);
+    }
 
-    // Crear nueva review
+    const data = validated.data;
     const newReview = {
       id: `rev-${Date.now()}`,
-      ...validated,
+      ...data,
       verified: true,
       status: "VERIFIED",
       date: new Date().toISOString().split("T")[0],
-      tags: validated.tags || [],
-      photos: validated.photos || [],
+      tags: data.tags ?? [],
+      photos: data.photos ?? [],
     };
 
     // En producción, aquí se guardaría en la base de datos
@@ -85,18 +85,8 @@ export async function POST(request) {
     );
   } catch (error) {
     if (error instanceof z.ZodError) {
-      return NextResponse.json(
-        {
-          success: false,
-          error: "Datos inválidos",
-          details: error.errors,
-        },
-        { status: 400 }
-      );
+      return validationError(error);
     }
-    return NextResponse.json(
-      { success: false, error: error.message },
-      { status: 500 }
-    );
+    return serverError(error.message);
   }
 }

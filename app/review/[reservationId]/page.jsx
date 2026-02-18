@@ -178,35 +178,41 @@ export default function ReviewPage({ params }) {
     setPhotos((prev) => prev.filter((p) => p !== url));
   }
 
-  function onSubmit(data) {
-    addReview({
-      reservationId,
-      restaurantId: reservation.restaurantId,
-      userId: user.id,
-      userName: user.name,
-      rating: data.rating,
-      comment: data.comment,
-      categories: {
-        food: data.food,
-        service: data.service,
-        ambiance: data.ambiance,
-        value: data.value,
-      },
-      tags: selectedTags,
-      photos,
-    });
-    const hasBenefit = restaurant?.benefit?.trim();
-    toast.success("¡Review verificada publicada!", {
-      description: hasBenefit
-        ? `${restaurant.name} te regaló: ${restaurant.benefit}. Lo verás en tu perfil.`
-        : "Tu opinión ayuda a otros comensales a tomar decisiones confiables.",
-      duration: 5000,
-    });
-    setSubmitted(true);
-    // Redirigir automáticamente después de 2 segundos
-    setTimeout(() => {
-      router.push(`/restaurants/${restaurant.id}`);
-    }, 2000);
+  async function onSubmit(data) {
+    try {
+      await addReview({
+        reservationId,
+        restaurantId: reservation.restaurantId,
+        userId: user.id,
+        userName: user.name,
+        rating: data.rating,
+        comment: data.comment,
+        categories: {
+          food: data.food,
+          service: data.service,
+          ambiance: data.ambiance,
+          value: data.value,
+        },
+        tags: selectedTags,
+        photos,
+      });
+      const hasBenefit = restaurant?.benefit?.trim();
+      toast.success("¡Review verificada publicada!", {
+        description: hasBenefit
+          ? `${restaurant.name} te regaló: ${restaurant.benefit}. Lo verás en tu perfil.`
+          : "Tu opinión ayuda a otros comensales a tomar decisiones confiables.",
+        duration: 5000,
+      });
+      setSubmitted(true);
+      setTimeout(() => router.push(`/restaurants/${restaurant.id}`), 2000);
+    } catch (err) {
+      const code = err?.code;
+      const description =
+        code === "VALIDATION"
+          ? "Revisá que el comentario tenga al menos 10 caracteres y las valoraciones estén completas."
+          : "Tuvimos un problema, intentá de nuevo.";
+      toast.error("No se pudo publicar la review", { description });
+    }
   }
 
   // Success screen

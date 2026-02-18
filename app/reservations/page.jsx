@@ -26,26 +26,31 @@ import { cn } from "@/lib/utils";
 const statusConfig = {
   PENDING_CONFIRMATION: {
     label: "Pendiente de confirmación",
+    hint: "El restaurante confirmará pronto",
     icon: Loader2,
     className: "text-accent-foreground bg-accent/15",
   },
   CONFIRMED: {
-    label: "Confirmada",
+    label: "Confirmada ✅",
+    hint: null,
     icon: CheckCircle2,
     className: "text-primary bg-primary/10",
   },
   COMPLETED: {
     label: "Completada",
+    hint: null,
     icon: CircleDot,
     className: "text-primary bg-primary/10",
   },
   NO_SHOW: {
     label: "No asistio",
+    hint: null,
     icon: AlertTriangle,
     className: "text-destructive bg-destructive/10",
   },
   CANCELED: {
     label: "Cancelada",
+    hint: null,
     icon: XCircle,
     className: "text-muted-foreground bg-muted",
   },
@@ -102,6 +107,11 @@ function ReservationCard({ reservation }) {
               {status.label}
             </span>
           </div>
+          {status.hint && (
+            <p className="mt-0.5 text-xs text-muted-foreground">
+              {status.hint}
+            </p>
+          )}
           <div className="mt-1 flex items-center gap-1">
             <RatingStars rating={restaurant.rating} size="sm" />
             <span className="text-xs text-muted-foreground">

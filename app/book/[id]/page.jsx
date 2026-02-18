@@ -9,6 +9,7 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { toast } from "sonner";
 import { useAppStore } from "@/lib/store";
+import { USE_API } from "@/lib/data-layer";
 import { getMinAvailableTimeToday } from "@/lib/availability";
 import { TimeSlotPicker } from "@/components/truebite/time-slot-picker";
 import { PrimaryButton } from "@/components/truebite/primary-button";
@@ -34,9 +35,19 @@ const bookingSchema = z.object({
 export default function BookPage({ params }) {
   const { id } = use(params);
   const router = useRouter();
-  const { getRestaurantById, addReservation, getActiveBenefitsForRestaurant } = useAppStore();
+  const {
+    getRestaurantById,
+    addReservation,
+    getActiveBenefitsForRestaurant,
+    loadRestaurantConfig,
+    hydrateFromApi,
+  } = useAppStore();
   const restaurant = getRestaurantById(id);
   const [submitted, setSubmitted] = useState(false);
+
+  useEffect(() => {
+    if (USE_API && id) loadRestaurantConfig(id);
+  }, [USE_API, id, loadRestaurantConfig]);
 
   const {
     register,
@@ -78,6 +89,16 @@ export default function BookPage({ params }) {
   const isComingSoon = !config?.wizardCompleted || !config?.reservationsEnabled;
   const isPaused = config?.reservationsPaused;
 
+  async function refetchSlots() {
+    await loadRestaurantConfig(id);
+    if (USE_API) await hydrateFromApi?.();
+    setValue("time", "", { shouldValidate: true });
+    toast.success("Horarios actualizados", {
+      description: "Elegí otro horario disponible.",
+      duration: 3000,
+    });
+  }
+
   if (!restaurant) {
     return (
       <ComensalGuard>
@@ -93,31 +114,48 @@ export default function BookPage({ params }) {
     );
   }
 
-  function onSubmit(data) {
-    addReservation({
-      restaurantId: id,
-      date: data.date,
-      time: data.time,
-      guests: data.guests,
-      notes: data.notes || "",
-      autoConfirmed: isAutoConfirm,
-      ...(benefitToApply && { appliedBenefitId: benefitToApply.id }),
-    });
-    toast.success(isAutoConfirm ? "¡Reserva confirmada!" : "Solicitud enviada", {
-      description: isAutoConfirm
-        ? benefitToApply
-          ? `Tu reserva incluye: ${benefitToApply.benefit}`
-          : `Tu mesa está reservada para el ${new Date(data.date).toLocaleDateString("es-ES", { day: "numeric", month: "long" })} a las ${data.time}`
-        : benefitToApply
-          ? `Tu reserva incluye el beneficio: ${benefitToApply.benefit}. Te avisaremos cuando la confirmen.`
-          : `Hemos enviado tu solicitud a ${restaurant.name}. Te avisaremos cuando la confirmen.`,
-      duration: 4000,
-    });
-    setSubmitted(true);
-    // Redirigir automáticamente después de 2 segundos
-    setTimeout(() => {
-      router.push("/reservations");
-    }, 2000);
+  async function onSubmit(data) {
+    try {
+      await addReservation({
+        restaurantId: id,
+        date: data.date,
+        time: data.time,
+        guests: data.guests,
+        notes: data.notes || "",
+        autoConfirmed: isAutoConfirm,
+        ...(benefitToApply && { appliedBenefitId: benefitToApply.id }),
+      });
+      toast.success(isAutoConfirm ? "¡Reserva confirmada!" : "Solicitud enviada", {
+        description: isAutoConfirm
+          ? benefitToApply
+            ? `Tu reserva incluye: ${benefitToApply.benefit}`
+            : `Tu mesa está reservada para el ${new Date(data.date).toLocaleDateString("es-ES", { day: "numeric", month: "long" })} a las ${data.time}`
+          : benefitToApply
+            ? `Tu reserva incluye el beneficio: ${benefitToApply.benefit}. Te avisaremos cuando la confirmen.`
+            : `Hemos enviado tu solicitud a ${restaurant.name}. Te avisaremos cuando la confirmen.`,
+        duration: 4000,
+      });
+      setSubmitted(true);
+      setTimeout(() => router.push("/reservations"), 2000);
+    } catch (err) {
+      const code = err?.code;
+      const title = "No se pudo crear la reserva";
+      const description =
+        code === "SLOT_UNAVAILABLE"
+          ? "Se ocupó recién. Elegí otro horario."
+          : code === "VALIDATION"
+            ? "Revisá fecha y cantidad de personas."
+            : "Tuvimos un problema, intentá de nuevo.";
+      toast.error(title, {
+        description,
+        ...(code === "SLOT_UNAVAILABLE" && {
+          action: {
+            label: "Ver horarios disponibles",
+            onClick: () => refetchSlots(),
+          },
+        }),
+      });
+    }
   }
 
   if (submitted) {
@@ -128,13 +166,21 @@ export default function BookPage({ params }) {
         <div className="flex h-16 w-16 items-center justify-center rounded-full bg-primary/10">
           <CheckCircle2 className="h-8 w-8 text-primary" />
         </div>
+        <span
+          className={cn(
+            "rounded-full px-3 py-1 text-sm font-medium",
+            wasAutoConfirm ? "bg-primary/10 text-primary" : "bg-accent/15 text-accent-foreground"
+          )}
+        >
+          {wasAutoConfirm ? "Confirmada ✅" : "Pendiente de confirmación"}
+        </span>
         <h2 className="text-xl font-bold text-foreground font-serif">
           {wasAutoConfirm ? "¡Reserva confirmada!" : "¡Solicitud enviada!"}
         </h2>
         <p className="text-sm text-muted-foreground">
           {wasAutoConfirm
             ? `Tu mesa en ${restaurant.name} está reservada. Nos vemos pronto.`
-            : `Tu reserva está pendiente. ${restaurant.name} la revisará y te avisará cuando la confirme.`}
+            : `El restaurante confirmará pronto. Te avisamos cuando esté lista.`}
         </p>
         <div className="flex flex-col gap-2 w-full max-w-xs mt-4">
           <PrimaryButton onClick={() => router.push("/reservations")}>

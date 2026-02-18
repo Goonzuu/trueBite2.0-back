@@ -1,6 +1,15 @@
-import { NextResponse } from "next/server";
 import { z } from "zod";
-import { reservations } from "@/lib/mock-data";
+import {
+  ok,
+  badRequest,
+  notFound,
+  serverError,
+  validationError,
+} from "@/lib/api-response";
+import {
+  getReservationById,
+  updateReservation as updateReservationInStore,
+} from "@/lib/server-reservation-store";
 
 const idSchema = z.string().min(1);
 
@@ -21,30 +30,17 @@ export async function GET(request, { params }) {
     const { id } = await params;
     idSchema.parse(id);
 
-    const reservation = reservations.find((r) => r.id === id);
-
+    const reservation = getReservationById(id);
     if (!reservation) {
-      return NextResponse.json(
-        { success: false, error: "Reserva no encontrada" },
-        { status: 404 }
-      );
+      return notFound("Reserva no encontrada");
     }
 
-    return NextResponse.json({
-      success: true,
-      data: reservation,
-    });
+    return ok(reservation);
   } catch (error) {
     if (error instanceof z.ZodError) {
-      return NextResponse.json(
-        { success: false, error: "ID inválido", details: error.errors },
-        { status: 400 }
-      );
+      return validationError(error);
     }
-    return NextResponse.json(
-      { success: false, error: error.message },
-      { status: 500 }
-    );
+    return serverError(error.message);
   }
 }
 
@@ -54,46 +50,27 @@ export async function PATCH(request, { params }) {
     idSchema.parse(id);
 
     const body = await request.json();
-    const validated = updateReservationSchema.parse(body);
+    const validated = updateReservationSchema.safeParse(body);
 
-    // Buscar reserva
-    const reservation = reservations.find((r) => r.id === id);
-
-    if (!reservation) {
-      return NextResponse.json(
-        { success: false, error: "Reserva no encontrada" },
-        { status: 404 }
-      );
+    if (!validated.success) {
+      return validationError(validated.error);
     }
 
-    // Actualizar reserva
-    const updated = {
-      ...reservation,
-      ...validated,
-    };
+    const reservation = getReservationById(id);
+    if (!reservation) {
+      return notFound("Reserva no encontrada");
+    }
 
-    // En producción, aquí se actualizaría en la base de datos
-    // Por ahora, solo retornamos la reserva actualizada
+    const updated = updateReservationInStore(id, validated.data);
+    if (!updated) {
+      return notFound("Reserva no encontrada");
+    }
 
-    return NextResponse.json({
-      success: true,
-      data: updated,
-      message: "Reserva actualizada exitosamente",
-    });
+    return ok(updated);
   } catch (error) {
     if (error instanceof z.ZodError) {
-      return NextResponse.json(
-        {
-          success: false,
-          error: "Datos inválidos",
-          details: error.errors,
-        },
-        { status: 400 }
-      );
+      return validationError(error);
     }
-    return NextResponse.json(
-      { success: false, error: error.message },
-      { status: 500 }
-    );
+    return serverError(error.message);
   }
 }

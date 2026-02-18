@@ -3,6 +3,7 @@
 import { useEffect } from "react";
 import { usePathname } from "next/navigation";
 import { useAppStore } from "@/lib/store";
+import { USE_API } from "@/lib/data-layer";
 import { TopBar } from "./top-bar";
 import { BottomTabs } from "./bottom-tabs";
 
@@ -11,11 +12,16 @@ export function AppShell({ children }) {
   const pathname = usePathname();
   const loadConfigs = useAppStore((s) => s.loadRestaurantConfigsFromStorage);
   const loadFavorites = useAppStore((s) => s.loadFavoritesFromStorage);
+  const hydrateFromApi = useAppStore((s) => s.hydrateFromApi);
 
   useEffect(() => {
-    loadConfigs?.();
+    if (USE_API) {
+      hydrateFromApi?.();
+    } else {
+      loadConfigs?.();
+    }
     loadFavorites?.();
-  }, [loadConfigs, loadFavorites]);
+  }, [USE_API, hydrateFromApi, loadConfigs, loadFavorites]);
   const hideMainNav =
     pathname?.startsWith("/restaurante") || pathname === "/login";
 
