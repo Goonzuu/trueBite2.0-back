@@ -12,6 +12,7 @@ const { getConfig } = require("../store/config-store");
 const { getById: getBenefitById, markUsed: markBenefitUsed } = require("../store/user-benefits-store");
 const {
   getReservations,
+  getReservationsFiltered,
   getReservationById,
   getReservationsForRestaurantAndDate,
   addReservation: addReservationToStore,
@@ -52,12 +53,20 @@ router.get("/", async (req, res, next) => {
       if (req.restaurantId !== restaurantId) return sendForbidden(res);
       return requireVerifiedRestaurant(req, res, async () => {
         try {
-          let list = (await getReservations()).filter((r) => r.restaurantId === restaurantId);
-          const status = req.query.status;
-          const userId = req.query.userId;
-          if (status) list = list.filter((r) => r.status === status);
-          if (userId) list = list.filter((r) => r.userId === userId);
-          return res.status(200).json({ success: true, data: list, count: list.length });
+          const status = req.query.status || undefined;
+          const dateFrom = req.query.dateFrom || undefined;
+          const dateTo = req.query.dateTo || undefined;
+          const limit = req.query.limit || undefined;
+          const offset = req.query.offset || undefined;
+          const { data, total } = await getReservationsFiltered({
+            restaurantId,
+            status,
+            dateFrom,
+            dateTo,
+            limit,
+            offset,
+          });
+          return res.status(200).json({ success: true, data, count: data.length, total });
         } catch (e) {
           return sendServerError(res, e.message);
         }
@@ -70,7 +79,15 @@ router.get("/", async (req, res, next) => {
     const userId = req.query.userId;
     if (status) list = list.filter((r) => r.status === status);
     if (userId) list = list.filter((r) => r.userId === userId);
-    res.status(200).json({ success: true, data: list, count: list.length });
+    const dateFrom = req.query.dateFrom;
+    const dateTo = req.query.dateTo;
+    if (dateFrom) list = list.filter((r) => r.date >= dateFrom);
+    if (dateTo) list = list.filter((r) => r.date <= dateTo);
+    const limit = Math.min(parseInt(req.query.limit, 10) || 500, 500);
+    const offset = Math.max(0, parseInt(req.query.offset, 10) || 0);
+    const total = list.length;
+    list = list.slice(offset, offset + limit);
+    res.status(200).json({ success: true, data: list, count: list.length, total });
   } catch (e) {
     sendServerError(res, e.message);
   }
@@ -216,6 +233,26 @@ router.patch("/:id", authenticateRestaurant, requireVerifiedRestaurant, async (r
         details: parsed.error.errors,
         code: "VALIDATION",
       });
+    }
+
+    const newStatus = parsed.data.status;
+    if (newStatus !== undefined && newStatus !== r.status) {
+      const allowed = {
+        PENDING_CONFIRMATION: ["CONFIRMED", "CANCELED"],
+        CONFIRMED: ["COMPLETED", "NO_SHOW", "CANCELED"],
+        COMPLETED: [],
+        NO_SHOW: [],
+        CANCELED: [],
+      };
+      const allowedNext = allowed[r.status];
+      if (!Array.isArray(allowedNext) || !allowedNext.includes(newStatus)) {
+        return sendBadRequest(
+          res,
+          `No se puede cambiar el estado de ${r.status} a ${newStatus}.`,
+          undefined,
+          "INVALID_STATE_TRANSITION"
+        );
+      }
     }
 
     const updated = await updateReservation(id, parsed.data);
