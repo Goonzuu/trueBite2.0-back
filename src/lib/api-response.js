@@ -38,11 +38,29 @@ function sendServerError(res, error = "Error interno del servidor", code = "SERV
   return res.status(500).json(errorBody(error, undefined, code));
 }
 
+/** Contrato EPIC 2: error como objeto { code, message } */
+function sendBadRequestContract(res, message = "Parámetros inválidos.", code = "VALIDATION", details = undefined) {
+  return res.status(400).json({
+    success: false,
+    error: { code, message },
+    ...(details !== undefined && { details }),
+  });
+}
+
+function sendNotFoundContract(res, message = "Solicitud no encontrada.", code = "NOT_FOUND") {
+  return res.status(404).json({
+    success: false,
+    error: { code, message },
+  });
+}
+
 module.exports = {
   sendOk,
   sendCreated,
   sendBadRequest,
+  sendBadRequestContract,
   sendNotFound,
+  sendNotFoundContract,
   sendConflict,
   sendServerError,
 };
