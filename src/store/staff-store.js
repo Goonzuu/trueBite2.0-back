@@ -92,7 +92,41 @@ async function verifyStaffPassword(entry, password) {
   return bcrypt.compare(password, entry.passwordHash);
 }
 
+/**
+ * Crea un staff para un restaurante (admin). Contraseña temporal.
+ * @param {string} restaurantId - UUID del restaurante
+ * @param {string} email
+ * @param {string} password - contraseña temporal (se devuelve una sola vez)
+ * @returns {{ email: string, password: string }}
+ */
+async function createStaff(restaurantId, email, password) {
+  const normalized = normalizeEmail(email);
+  if (!normalized) throw new Error("Email requerido");
+  if (!password || String(password).trim().length < 6) throw new Error("La contraseña debe tener al menos 6 caracteres");
+
+  if (isSupabaseConfigured()) {
+    const supabase = getSupabase();
+    const passwordHash = await bcrypt.hash(String(password).trim(), 10);
+    const { data, error } = await supabase
+      .from("restaurant_staff")
+      .insert({
+        email: normalized,
+        restaurant_id: restaurantId,
+        password_hash: passwordHash,
+      })
+      .select("id, email, restaurant_id")
+      .single();
+    if (error) {
+      if (error.code === "23505") throw new Error("Ya existe un staff con ese email para este restaurante");
+      throw new Error(error.message);
+    }
+    return { email: normalized, password: String(password).trim() };
+  }
+  throw new Error("Supabase no configurado");
+}
+
 module.exports = {
   findByEmail,
   verifyStaffPassword,
+  createStaff,
 };

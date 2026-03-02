@@ -70,6 +70,43 @@ async function getReservationsFiltered(filters) {
   return { data: list, total };
 }
 
+/**
+ * Lista reservas con filtros (admin). restaurantId opcional (si no se pasa, todas).
+ * @param {Object} filters - { restaurantId?, status?, dateFrom?, dateTo?, limit?, offset? }
+ * @returns {{ data: Array, total: number }}
+ */
+async function getReservationsFilteredAdmin(filters) {
+  const { restaurantId, status, dateFrom, dateTo, limit: limitParam, offset: offsetParam } = filters || {};
+  const limit = Math.min(parseInt(limitParam, 10) || 100, 500);
+  const offset = Math.max(0, parseInt(offsetParam, 10) || 0);
+
+  if (isSupabaseConfigured()) {
+    const supabase = getSupabase();
+    let q = supabase.from("reservations").select("*", { count: "exact" });
+    if (restaurantId) q = q.eq("restaurant_id", restaurantId);
+    if (status) q = q.eq("status", status);
+    if (dateFrom) q = q.gte("date", dateFrom);
+    if (dateTo) q = q.lte("date", dateTo);
+    q = q.order("date", { ascending: false }).order("time");
+    const { data, error, count } = await q.range(offset, offset + limit - 1);
+    if (error) throw new Error(error.message);
+    return { data: (data || []).map(mapRowToReservation), total: count ?? (data || []).length };
+  }
+
+  let list = [...memoryList];
+  if (restaurantId) list = list.filter((r) => r.restaurantId === restaurantId);
+  if (status) list = list.filter((r) => r.status === status);
+  if (dateFrom) list = list.filter((r) => r.date >= dateFrom);
+  if (dateTo) list = list.filter((r) => r.date <= dateTo);
+  list.sort((a, b) => {
+    const d = (b.date || "").localeCompare(a.date || "");
+    return d !== 0 ? d : (a.time || "").localeCompare(b.time || "");
+  });
+  const total = list.length;
+  list = list.slice(offset, offset + limit);
+  return { data: list, total };
+}
+
 async function getReservationById(id) {
   if (isSupabaseConfigured()) {
     const supabase = getSupabase();
@@ -148,6 +185,7 @@ async function updateReservation(id, patch) {
 module.exports = {
   getReservations,
   getReservationsFiltered,
+  getReservationsFilteredAdmin,
   getReservationById,
   getReservationsForRestaurantAndDate,
   addReservation,

@@ -37,6 +37,8 @@ app.use("/api/reviews", reviewsRouter);
 app.use("/api/users", usersRouter);
 app.use("/api/auth", authRouter);
 app.use("/api/onboarding-requests", require("./routes/onboarding-requests"));
+app.use("/api/admin/restaurants", require("./routes/admin-restaurants"));
+app.use("/api/admin/reservations", require("./routes/admin-reservations"));
 
 app.get("/health", (req, res) => {
   res.status(200).json({
