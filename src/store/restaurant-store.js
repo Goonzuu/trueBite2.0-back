@@ -122,13 +122,19 @@ async function getById(id) {
 }
 
 /**
- * Actualiza un restaurante (admin). Solo verification_status por ahora.
+ * Actualiza un restaurante (admin). Soporta verification_status, rating y review_count.
  */
 async function update(id, patch) {
   if (!id) return null;
   const updates = {};
   if (patch.verification_status !== undefined && VERIFICATION_STATUSES.includes(patch.verification_status)) {
     updates.verification_status = patch.verification_status;
+  }
+  if (patch.rating !== undefined && typeof patch.rating === "number") {
+    updates.rating = patch.rating;
+  }
+  if (patch.reviewCount !== undefined && Number.isInteger(patch.reviewCount) && patch.reviewCount >= 0) {
+    updates.review_count = patch.reviewCount;
   }
   if (Object.keys(updates).length === 0) return getById(id);
 
@@ -141,6 +147,11 @@ async function update(id, patch) {
   const r = mockRestaurants.find((x) => x.id === id);
   if (!r) return null;
   if (updates.verification_status) r.verification_status = updates.verification_status;
+  if (updates.rating != null) r.rating = updates.rating;
+  if (updates.review_count != null) {
+    r.review_count = updates.review_count;
+    r.reviewCount = updates.review_count;
+  }
   return mapRowToRestaurant(r);
 }
 
